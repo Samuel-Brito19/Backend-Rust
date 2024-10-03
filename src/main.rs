@@ -1,5 +1,6 @@
 use actix_web::{HttpServer};
-mod repository;
+pub mod repository;
+pub mod model;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
