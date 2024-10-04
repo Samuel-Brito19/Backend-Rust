@@ -1,3 +1,5 @@
+use core::task;
+
 use crate::model::task::Task;
 use crate::model::task::TaskState;
 use crate::repository::ddb::DDBRepository;
@@ -77,4 +79,71 @@ pub async fn submit_task(
         Ok(()) => Ok(Json(TaskIndentifier { task_global_id: task_identifier })),
         Err(_) => Err(TaskError::TaskCreationFailure)
     }
+}
+
+async fn state_transition(
+    ddb_repo: Data<DDBRepository>,
+    task_global_id: String,
+    new_state: TaskState,
+    result_file: Option<String>
+) -> Result<Json<TaskIndentifier>, TaskError> {
+    let mut task = match ddb_repo.get_task(
+        task_global_id
+    ).await {
+        Some(task) => task,
+        None => return Err(TaskError::TaskNotFound)
+    };
+
+    if !task.can_transition_to(&new_state) {
+        return Err(TaskError::BadTaskRequest);
+    };
+
+    task.state = new_state;
+    task.result_file = result_file;
+
+    let task_identifier = task.get_global_id();
+    match ddb_repo.put_task(task).await {
+        Ok(()) => Ok(Json(TaskIndentifier { task_global_id: task_identifier })),
+        Err(_) => Err(TaskError::TaskUpdateFailure)
+    }
+}
+
+#[put("/task/{task_global_id}/start")]
+pub async fn start_task(
+    ddb_repo: Data<DDBRepository>,
+    task_identifier:  Path<TaskIndentifier>
+) -> Result<Json<TaskIndentifier>, TaskError> {
+    state_transition(
+        ddb_repo, 
+        task_identifier.into_inner().task_global_id,
+        TaskState::InProgress,
+        None
+    ).await
+}
+
+#[put("/task/{task_global_id}/fail")]
+pub async fn fail_task(
+    ddb_repo: Data<DDBRepository>,
+    task_identifier:  Path<TaskIndentifier>
+) -> Result<Json<TaskIndentifier>, TaskError> {
+    state_transition( 
+        ddb_repo, 
+        task_identifier.into_inner().task_global_id,
+        TaskState::Failed,
+        None
+    )
+}
+
+#[put("/task/{task_global_id}/complete")]
+pub async fn complete_task(
+    ddb_repo: Data<DDBRepository>, 
+    task_identifier: Path<TaskIdentifier>,
+    completion_request: Json<TaskCompletionRequest>
+) -> Result<Json<TaskIdentifier>, TaskError> {
+    state_transition(
+        ddb_repo, 
+        task_identifier.into_inner().task_global_id, 
+        TaskState::Completed, 
+        Some(completion_request.result_file.clone())
+    ).await
 }
