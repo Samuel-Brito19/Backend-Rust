@@ -38,7 +38,7 @@ async fn main() -> std::io::Result<()> {
             .service(pause_task)
             .service(fail_task)
     })
-    .bind(("127.0.0.1", 80))?
+    .bind(("127.0.0.1", 8000))?
     .run()
     .await
 
