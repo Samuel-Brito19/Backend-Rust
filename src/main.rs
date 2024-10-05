@@ -31,6 +31,15 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(logger)
             .app_data(ddb_data)
+            .service(get_task)
+            .service(submit_task)
+            .service(start_task)
+            .service(complete_task)
+            .service(pause_task)
+            .service(fail_task)
     })
+    .bind(("127.0.0.1", 80))?
+    .run()
+    .await
 
 }

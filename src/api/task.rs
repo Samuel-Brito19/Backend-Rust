@@ -1,14 +1,12 @@
-use core::task;
-
 use crate::model::task::Task;
 use crate::model::task::TaskState;
 use crate::repository::ddb::DDBRepository;
 use actix_web::{HttpResponse, web::Data, get, post, put, error::ResponseError, web::Path, web::Json, http::{header::ContentType, StatusCode}};
 use serde::{Serialize, Deserialize};
-use derive_more::{Display};
+use derive_more::Display;
 
 #[derive(Deserialize, Serialize)]
-pub struct TaskIndentifier {
+pub struct TaskIdentifier {
     task_global_id: String,
 }
 
@@ -52,7 +50,7 @@ impl ResponseError for TaskError {
 #[get("/task/{task_global_id}")]
 pub async fn get_task(
     ddb_repo: Data<DDBRepository>,
-    task_identifier:  Path<TaskIndentifier>
+    task_identifier:  Path<TaskIdentifier>
 ) -> Result<Json<Task>, TaskError> {
     let tsk = ddb_repo.get_task(
         task_identifier.into_inner().task_global_id
@@ -68,7 +66,7 @@ pub async fn get_task(
 pub async fn submit_task(
     ddb_repo: Data<DDBRepository>,
     request: Json<SubmitTaskRequest>
-) -> Result<Json<TaskIndentifier>, TaskError> {
+) -> Result<Json<TaskIdentifier>, TaskError> {
     let task = Task::new(
         request.user_id.clone(), 
         request.task_type.clone(), 
@@ -76,7 +74,7 @@ pub async fn submit_task(
     );
     let task_identifier = task.get_global_id();
     match ddb_repo.put_task(task).await {
-        Ok(()) => Ok(Json(TaskIndentifier { task_global_id: task_identifier })),
+        Ok(()) => Ok(Json(TaskIdentifier { task_global_id: task_identifier })),
         Err(_) => Err(TaskError::TaskCreationFailure)
     }
 }
@@ -86,7 +84,7 @@ async fn state_transition(
     task_global_id: String,
     new_state: TaskState,
     result_file: Option<String>
-) -> Result<Json<TaskIndentifier>, TaskError> {
+) -> Result<Json<TaskIdentifier>, TaskError> {
     let mut task = match ddb_repo.get_task(
         task_global_id
     ).await {
@@ -103,7 +101,7 @@ async fn state_transition(
 
     let task_identifier = task.get_global_id();
     match ddb_repo.put_task(task).await {
-        Ok(()) => Ok(Json(TaskIndentifier { task_global_id: task_identifier })),
+        Ok(()) => Ok(Json(TaskIdentifier { task_global_id: task_identifier })),
         Err(_) => Err(TaskError::TaskUpdateFailure)
     }
 }
@@ -111,8 +109,8 @@ async fn state_transition(
 #[put("/task/{task_global_id}/start")]
 pub async fn start_task(
     ddb_repo: Data<DDBRepository>,
-    task_identifier:  Path<TaskIndentifier>
-) -> Result<Json<TaskIndentifier>, TaskError> {
+    task_identifier:  Path<TaskIdentifier>
+) -> Result<Json<TaskIdentifier>, TaskError> {
     state_transition(
         ddb_repo, 
         task_identifier.into_inner().task_global_id,
@@ -121,17 +119,30 @@ pub async fn start_task(
     ).await
 }
 
+#[put("/task/{task_global_id}/pause")]
+pub async fn pause_task(
+    ddb_repo: Data<DDBRepository>,
+    task_identifier:  Path<TaskIdentifier>
+) -> Result<Json<TaskIdentifier>, TaskError> {
+    state_transition( 
+        ddb_repo, 
+        task_identifier.into_inner().task_global_id,
+        TaskState::Paused,
+        None
+    ).await
+}
+
 #[put("/task/{task_global_id}/fail")]
 pub async fn fail_task(
     ddb_repo: Data<DDBRepository>,
-    task_identifier:  Path<TaskIndentifier>
-) -> Result<Json<TaskIndentifier>, TaskError> {
+    task_identifier:  Path<TaskIdentifier>
+) -> Result<Json<TaskIdentifier>, TaskError> {
     state_transition( 
         ddb_repo, 
         task_identifier.into_inner().task_global_id,
         TaskState::Failed,
         None
-    )
+    ).await
 }
 
 #[put("/task/{task_global_id}/complete")]
